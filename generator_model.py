@@ -1,45 +1,62 @@
 import warnings
 warnings.filterwarnings("ignore")
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
+from transformers import pipeline
 import torch
 
-class TextGenerator:
-    def __init__(self, model_name="gpt2-medium"):
-        # Detect device
-        self.device = 0 if torch.cuda.is_available() else -1
-        self.torch_device = torch.device("cuda") if self.device == 0 else torch.device("cpu")
 
-        # Load tokenizer and model fully on a real device (avoid meta tensors)
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForCausalLM.from_pretrained(model_name, device_map=None)
-        self.model.to(self.torch_device)  # safe: model now has real weights
+def generate_essay(prompt, max_length=800):
+    """
+    Generates an essay based purely on the given prompt using GPT-Neo.
 
-        # Create a pipeline
-        self.generator = pipeline(
+    Args:
+        prompt (str): The starting text or essay topic.
+        max_length (int): The maximum number of tokens to generate.
+
+    Returns:
+        str: The generated essay text.
+    """
+    try:
+        # Detect device (GPU if available)
+        device = 0 if torch.cuda.is_available() else -1
+
+        # Load GPT-Neo model (high quality, medium size)
+        generator = pipeline(
             "text-generation",
-            model=self.model,
-            tokenizer=self.tokenizer,
-            device=self.device
+            model="EleutherAI/gpt-neo-1.3B",
+            device=device
         )
 
-    def generate(self, prompt: str, sentiment: str = "positive") -> str:
-        # Adjust the prompt based on sentiment
-        if sentiment.lower() == "positive":
-            full_prompt = f"Write a short, optimistic, and positive paragraph about {prompt}. Focus on happiness, growth, and gratitude."
-        elif sentiment.lower() == "negative":
-            full_prompt = f"Write a long, negative, and emotional paragraph about {prompt}. Focus on sadness, anger, frustration, and loneliness."
-        else:
-            full_prompt = f"Write a neutral paragraph about {prompt}. Focus on facts and clarity."
-
-        # Generate text
-        result = self.generator(
-            full_prompt,
-            max_length=150,
-            num_return_sequences=1,
+        # Generate essay text
+        result = generator(
+            prompt,
+            max_length=max_length,
             temperature=0.8,
             top_p=0.9,
-            do_sample=True
+            repetition_penalty=1.2,
+            do_sample=True,
+            num_return_sequences=1,
+            pad_token_id=generator.tokenizer.eos_token_id
         )
 
-        text = result[0]["generated_text"]
-        return text.replace("\n", " ").strip()
+        essay_text = result[0]["generated_text"]
+
+        # Clean prompt repetition (GPT-Neo sometimes repeats input)
+        if essay_text.lower().startswith(prompt.lower()):
+            essay_text = essay_text[len(prompt):].strip()
+
+        # Format output nicely into paragraphs
+        essay_text = essay_text.replace("\n", " ").strip()
+        essay_text = ". ".join([s.strip().capitalize() for s in essay_text.split(". ") if s.strip()])
+
+        return essay_text
+
+    except Exception as e:
+        return f"An error occurred: {e}"
+
+
+# Example usage:
+if __name__ == "__main__":
+    essay_topic = "The impact of climate change on global agriculture"
+    print(f"\nGenerating essay on: {essay_topic}\n")
+    essay = generate_essay(essay_topic)
+    print(essay)
