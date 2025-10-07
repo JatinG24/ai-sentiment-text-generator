@@ -1,0 +1,6 @@
+streamlit
+transformers>=4.0
+torch # or tensorflow if you prefer
+sentencepiece # if using T5-like models
+pandas
+numpy
